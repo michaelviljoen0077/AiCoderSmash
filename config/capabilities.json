@@ -1,0 +1,30 @@
+{
+  "1": {
+    "name": "Architectural Planning & Long-Horizon Reasoning",
+    "routes": [
+      "claude_code_native",
+      "github_copilot_claude",
+      "ollama_cloud",
+      "ollama_local_emergency"
+    ]
+  },
+  "2": {
+    "name": "Production Engineering & System Integration",
+    "routes": [
+      "claude_code_native",
+      "github_copilot_claude",
+      "cursor_composer",
+      "ollama_cloud",
+      "ollama_local_emergency"
+    ]
+  },
+  "3": {
+    "name": "Boilerplate Generation & Surgical Injection",
+    "routes": [
+      "codex_endpoint",
+      "claude_code_native",
+      "github_copilot_claude",
+      "ollama_local_emergency"
+    ]
+  }
+}

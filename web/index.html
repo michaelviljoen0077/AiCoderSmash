@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Switchboard</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page:           #f9f9f7;
+    --surface:        #fcfcfb;
+    --ink:            #0b0b0b;
+    --ink-2:          #52514e;
+    --ink-muted:      #898781;
+    --hairline:       rgba(11,11,11,0.10);
+    --grid:           #e1e0d9;
+    --accent:         #2a78d6;
+    --status-good:    #0ca30c;
+    --status-warn:    #fab219;
+    --status-serious: #ec835a;
+    --status-crit:    #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page:      #0d0d0d;
+      --surface:   #1a1a19;
+      --ink:       #ffffff;
+      --ink-2:     #c3c2b7;
+      --ink-muted: #898781;
+      --hairline:  rgba(255,255,255,0.10);
+      --grid:      #2c2c2a;
+      --accent:    #3987e5;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page:      #0d0d0d;
+    --surface:   #1a1a19;
+    --ink:       #ffffff;
+    --ink-2:     #c3c2b7;
+    --ink-muted: #898781;
+    --hairline:  rgba(255,255,255,0.10);
+    --grid:      #2c2c2a;
+    --accent:    #3987e5;
+  }
+
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 24px 20px 80px; }
+
+  header {
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    padding-bottom: 16px; border-bottom: 1px solid var(--grid); margin-bottom: 20px;
+  }
+  h1 { font-size: 18px; font-weight: 650; letter-spacing: 0.01em; }
+  .sub { color: var(--ink-muted); font-size: 12.5px; }
+  .spacer { flex: 1; }
+  button.ghost {
+    background: none; border: 1px solid var(--hairline); border-radius: 8px;
+    color: var(--ink-2); font: inherit; font-size: 12.5px;
+    padding: 4px 12px; cursor: pointer;
+  }
+  button.ghost:hover { border-color: var(--ink-muted); }
+
+  h2 {
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--ink-muted); margin: 26px 0 10px;
+  }
+
+  .fleet { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: 10px; padding: 12px 14px;
+  }
+  .card .route { font-weight: 600; font-size: 13.5px; margin-bottom: 6px; overflow-wrap: anywhere; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--ink-2);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .meta { color: var(--ink-muted); font-size: 11.5px; margin-top: 6px; }
+
+  .composer {
+    background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: 12px; padding: 14px;
+  }
+  textarea {
+    width: 100%; min-height: 84px; resize: vertical;
+    background: transparent; color: var(--ink);
+    border: 1px solid var(--grid); border-radius: 8px;
+    font: inherit; padding: 10px 12px;
+  }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+  .controls { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+  select {
+    background: var(--surface); color: var(--ink);
+    border: 1px solid var(--grid); border-radius: 8px;
+    font: inherit; font-size: 13px; padding: 6px 10px;
+  }
+  label { color: var(--ink-muted); font-size: 12.5px; }
+  .send {
+    margin-left: auto;
+    background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    font: inherit; font-weight: 600; font-size: 13.5px;
+    padding: 8px 22px; cursor: pointer;
+  }
+  .send:disabled { opacity: 0.5; cursor: default; }
+
+  .feed { display: flex; flex-direction: column; gap: 12px; }
+  .job { background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; padding: 14px 16px; }
+  .job .prompt { font-weight: 600; margin-bottom: 8px; overflow-wrap: anywhere; }
+  .trail { color: var(--ink-2); font-size: 12.5px; }
+  .trail div { padding: 1px 0; }
+  .output {
+    margin-top: 10px; padding: 12px; border: 1px solid var(--grid); border-radius: 8px;
+    font: 12.5px/1.55 ui-monospace, Consolas, monospace;
+    white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: auto;
+    max-height: 420px; overflow-y: auto; color: var(--ink);
+  }
+  .files { margin-top: 8px; font-size: 12px; color: var(--ink-2); overflow-wrap: anywhere; }
+  .readback { margin-top: 8px; font-size: 13px; color: var(--ink-2); border-left: 3px solid var(--accent); padding-left: 10px; }
+  .running { color: var(--ink-muted); font-size: 13px; }
+  .running::after { content: "…"; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+
+  details.memory { background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; padding: 12px 16px; }
+  details.memory summary { cursor: pointer; font-weight: 600; font-size: 13.5px; color: var(--ink-2); }
+  .empty { color: var(--ink-muted); font-size: 13px; padding: 14px 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>AI Switchboard</h1>
+    <span class="sub" id="projectRoot"></span>
+    <span class="spacer"></span>
+    <span class="badge" id="delegatorBadge"></span>
+    <button class="ghost" id="themeToggle" title="Toggle theme">◐ Theme</button>
+  </header>
+
+  <h2>Fleet</h2>
+  <div class="fleet" id="fleet"></div>
+
+  <h2>New task</h2>
+  <div class="composer">
+    <textarea id="prompt" placeholder="Describe the task — the Delegator will pick the tier and route it down the waterfall."></textarea>
+    <div class="controls">
+      <label>Tier
+        <select id="tier">
+          <option value="">Auto (delegator)</option>
+          <option value="1">1 — Architecture</option>
+          <option value="2">2 — Engineering</option>
+          <option value="3">3 — Boilerplate</option>
+        </select>
+      </label>
+      <label>Route
+        <select id="route"><option value="">Auto (waterfall)</option></select>
+      </label>
+      <button class="send" id="send">Dispatch</button>
+    </div>
+  </div>
+
+  <h2>Dispatches</h2>
+  <div class="feed" id="feed"><div class="empty">Nothing dispatched yet.</div></div>
+
+  <h2>Shared memory bank</h2>
+  <details class="memory">
+    <summary>CLAUDE.md — injected into every engine prompt</summary>
+    <div class="output" id="memory"></div>
+  </details>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+
+/* Status roles: icon + label always accompany the color (never color alone). */
+const QUOTA_STYLE = {
+  active:    { color: "var(--status-good)",    icon: "●", label: "active" },
+  throttled: { color: "var(--status-warn)",    icon: "▲", label: "throttled" },
+  exhausted: { color: "var(--status-serious)", icon: "■", label: "exhausted" },
+};
+
+$("themeToggle").onclick = () => {
+  const root = document.documentElement;
+  const dark = getComputedStyle(root).colorScheme.includes("dark");
+  root.dataset.theme = dark ? "light" : "dark";
+};
+
+async function refreshStatus() {
+  try {
+    const s = await (await fetch("/api/status")).json();
+    $("projectRoot").textContent = s.project_root;
+
+    const on = s.delegator_online;
+    $("delegatorBadge").innerHTML = "";
+    $("delegatorBadge").append(
+      dot(on ? "var(--status-good)" : "var(--status-serious)"),
+      document.createTextNode(
+        `${on ? "✓" : "✕"} Delegator ${s.delegator_model} ${on ? "online" : "offline — heuristic mode"}`));
+
+    const fleet = $("fleet");
+    fleet.innerHTML = "";
+    const routeSel = $("route");
+    const prev = routeSel.value;
+    routeSel.innerHTML = '<option value="">Auto (waterfall)</option>';
+    for (const e of s.engines) {
+      const q = QUOTA_STYLE[e.quota] || { color: "var(--ink-muted)", icon: "?", label: e.quota };
+      const card = document.createElement("div");
+      card.className = "card";
+      const name = document.createElement("div");
+      name.className = "route"; name.textContent = e.route;
+      const badge = document.createElement("div");
+      badge.className = "badge";
+      if (!e.installed) {
+        badge.append(dot("var(--ink-muted)"), document.createTextNode("○ not installed — skipped"));
+      } else {
+        badge.append(dot(q.color), document.createTextNode(`${q.icon} ${q.label}`));
+      }
+      card.append(name, badge);
+      if (e.resets_at) {
+        const m = document.createElement("div");
+        m.className = "meta"; m.textContent = `resets ${e.resets_at}`;
+        card.append(m);
+      }
+      fleet.append(card);
+      if (e.installed) {
+        const opt = document.createElement("option");
+        opt.value = e.route; opt.textContent = e.route;
+        routeSel.append(opt);
+      }
+    }
+    routeSel.value = prev;
+  } catch { /* server briefly busy; next poll catches up */ }
+}
+
+function dot(color) {
+  const d = document.createElement("span");
+  d.className = "dot"; d.style.background = color;
+  return d;
+}
+
+async function refreshMemory() {
+  try {
+    const m = await (await fetch("/api/memory")).json();
+    $("memory").textContent = m.memory || "(empty)";
+  } catch {}
+}
+
+$("send").onclick = async () => {
+  const prompt = $("prompt").value.trim();
+  if (!prompt) return;
+  $("send").disabled = true;
+  try {
+    const res = await fetch("/api/task", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, tier: $("tier").value || null, route: $("route").value || null }),
+    });
+    const { id, error } = await res.json();
+    if (error) { alert(error); return; }
+    $("prompt").value = "";
+    addJob(id, prompt);
+  } finally {
+    $("send").disabled = false;
+  }
+};
+
+function addJob(id, prompt) {
+  const empty = $("feed").querySelector(".empty");
+  if (empty) empty.remove();
+  const card = document.createElement("div");
+  card.className = "job";
+  const p = document.createElement("div");
+  p.className = "prompt"; p.textContent = prompt;
+  const body = document.createElement("div");
+  body.className = "running"; body.textContent = "Dispatching";
+  card.append(p, body);
+  $("feed").prepend(card);
+  poll(id, card, body);
+}
+
+async function poll(id, card, body) {
+  try {
+    const t = await (await fetch(`/api/task/${id}`)).json();
+    if (t.state === "running") { setTimeout(() => poll(id, card, body), 2000); return; }
+    body.remove();
+    if (t.state === "error") {
+      const err = document.createElement("div");
+      err.className = "trail"; err.textContent = `✕ dispatch error: ${t.error}`;
+      card.append(err);
+    } else {
+      renderReport(card, t.report);
+    }
+    refreshStatus(); refreshMemory();
+  } catch {
+    setTimeout(() => poll(id, card, body), 3000);
+  }
+}
+
+function renderReport(card, r) {
+  const trail = document.createElement("div");
+  trail.className = "trail";
+  const tierLine = document.createElement("div");
+  tierLine.textContent = `Tier ${r.tier} — ${r.tier_reason}`;
+  trail.append(tierLine);
+  for (const a of r.attempts) {
+    const line = document.createElement("div");
+    line.textContent = (a.includes("SUCCESS") ? "✓ " : "→ ") + a;
+    trail.append(line);
+  }
+  card.append(trail);
+
+  if (r.ok) {
+    const out = document.createElement("div");
+    out.className = "output";
+    out.textContent = r.result.output || "(no textual output)";
+    card.append(out);
+    if (r.result.changed_files.length) {
+      const f = document.createElement("div");
+      f.className = "files";
+      f.textContent = "Files changed: " + r.result.changed_files.join(", ");
+      card.append(f);
+    }
+    if (r.read_back) {
+      const rb = document.createElement("div");
+      rb.className = "readback"; rb.textContent = r.read_back;
+      card.append(rb);
+    }
+  } else {
+    const fail = document.createElement("div");
+    fail.className = "trail";
+    fail.textContent = "✕ All routes failed or are exhausted.";
+    card.append(fail);
+  }
+}
+
+refreshStatus(); refreshMemory();
+setInterval(refreshStatus, 6000);
+</script>
+</body>
+</html>

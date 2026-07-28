@@ -1,0 +1,30 @@
+{
+  "claude_code_native": {
+    "status": "active",
+    "resets_at": null
+  },
+  "github_copilot_claude": {
+    "status": "active",
+    "resets_at": null
+  },
+  "codex_endpoint": {
+    "status": "active",
+    "resets_at": null
+  },
+  "cursor_composer": {
+    "status": "active",
+    "resets_at": null
+  },
+  "ollama_cloud": {
+    "status": "active",
+    "resets_at": null
+  },
+  "ollama_local_emergency": {
+    "status": "active",
+    "resets_at": null
+  },
+  "antigravity": {
+    "status": "active",
+    "resets_at": null
+  }
+}

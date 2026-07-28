@@ -1,0 +1,48 @@
+{
+  "project_root": ".",
+  "ollama_host": "http://localhost:11434",
+  "delegator_model": "qwen3.5:4b",
+  "claude_md": "CLAUDE.md",
+  "watcher_interval_seconds": 1.5,
+  "engine_timeout_seconds": 900,
+  "engines": {
+    "claude_code_native": {
+      "type": "cli",
+      "command": ["claude", "-p", "{prompt}", "--model", "{model}", "--output-format", "text"],
+      "models_by_tier": { "1": "opus", "2": "sonnet", "3": "haiku" },
+      "default_reset_minutes": 300,
+      "writes_code": true
+    },
+    "github_copilot_claude": {
+      "type": "cli",
+      "command": ["copilot", "-p", "{prompt}", "--allow-tool", "write"],
+      "default_reset_minutes": 60,
+      "writes_code": true
+    },
+    "codex_endpoint": {
+      "type": "cli",
+      "command": ["codex", "exec", "{prompt}"],
+      "default_reset_minutes": 300,
+      "writes_code": true
+    },
+    "cursor_composer": {
+      "type": "cli",
+      "command": ["cursor-agent", "-p", "{prompt}"],
+      "default_reset_minutes": 60,
+      "writes_code": true,
+      "rules_file": ".cursor/rules/supervisor.mdc"
+    },
+    "ollama_cloud": {
+      "type": "ollama",
+      "model": "minimax-m3:cloud",
+      "default_reset_minutes": 60,
+      "writes_code": false
+    },
+    "ollama_local_emergency": {
+      "type": "ollama",
+      "model": "qwen3-coder:30b",
+      "default_reset_minutes": 0,
+      "writes_code": false
+    }
+  }
+}
