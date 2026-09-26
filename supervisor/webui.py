@@ -14,6 +14,7 @@ from .settings import BASE_DIR
 from .waterfall import DispatchReport, Switchboard
 
 WEB_DIR = BASE_DIR / "web"
+MAX_FINISHED_TASKS = 200
 
 
 def report_to_dict(report: DispatchReport) -> dict:
@@ -78,12 +79,15 @@ class SwitchboardHandler(BaseHTTPRequestHandler):
         if self.path.split("?")[0] != "/api/task":
             self._json({"error": "not found"}, 404)
             return
-        length = int(self.headers.get("Content-Length", 0))
         try:
+            length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length).decode("utf-8"))
-            prompt = (body.get("prompt") or "").strip()
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            prompt = ""
+        except (ValueError, UnicodeDecodeError):
+            body = None
+        if not isinstance(body, dict):
+            self._json({"error": "invalid JSON body"}, 400)
+            return
+        prompt = str(body.get("prompt") or "").strip()
         if not prompt:
             self._json({"error": "empty prompt"}, 400)
             return
@@ -99,9 +103,16 @@ class SwitchboardHandler(BaseHTTPRequestHandler):
             self.counter[0] += 1
             task_id = str(self.counter[0])
             self.tasks[task_id] = {"prompt": prompt, "future": future}
+            self._prune_tasks()
         self._json({"id": task_id})
 
     # -------------------------------------------------------------- handlers
+
+    def _prune_tasks(self):
+        """Drop the oldest finished tasks so the registry can't grow forever."""
+        finished = [tid for tid, t in self.tasks.items() if t["future"].done()]
+        for tid in finished[:-MAX_FINISHED_TASKS]:
+            del self.tasks[tid]
 
     def _status(self):
         return {
@@ -154,5 +165,5 @@ def serve(board: Switchboard, port: int = 8787, open_browser: bool = True):
     except KeyboardInterrupt:
         pass
     finally:
-        server.shutdown()
+        server.server_close()
         board.shutdown()
