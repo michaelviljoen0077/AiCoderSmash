@@ -78,6 +78,8 @@ class Switchboard:
                   forced_route: str | None) -> DispatchReport:
         if tier is None:
             tier, reason = self.delegator.classify(prompt)
+        elif forced_route:
+            reason = f"route forced by user ({forced_route})"
         else:
             reason = "tier forced by user"
         report = DispatchReport(result=None, tier=tier, tier_reason=reason)
@@ -108,14 +110,20 @@ class Switchboard:
                     report.read_back = self.delegator.read_back(prompt, result.output)
                 return report
             except RateLimitError as e:
-                self.ledger.mark_limited(route, e.status, e.resets_at)
-                report.attempts.append(
-                    f"{route}: {e.status} ({e.message}), flagged until {e.resets_at}"
-                )
+                if e.resets_at:
+                    self.ledger.mark_limited(route, e.status, e.resets_at)
+                    report.attempts.append(
+                        f"{route}: {e.status} ({e.message}), flagged until {e.resets_at}"
+                    )
+                else:
+                    # No reset estimate: flagging would block the route forever.
+                    report.attempts.append(f"{route}: {e.status} ({e.message}), not flagged")
             except EngineUnavailable as e:
                 report.attempts.append(f"{route}: unavailable ({e.message})")
             except EngineError as e:
                 report.attempts.append(f"{route}: failed ({e.message})")
+            except Exception as e:  # one broken adapter must not kill the queue
+                report.attempts.append(f"{route}: crashed ({type(e).__name__}: {e})")
 
         return report
 
@@ -136,9 +144,12 @@ class Switchboard:
             summary = result.output if result.status == "manual" else (
                 result.output[:300] or "(no output)"
             )
-            self.memory.log_action(
-                engine.route, original_task, summary, result.changed_files
-            )
+            try:
+                self.memory.log_action(
+                    engine.route, original_task, summary, result.changed_files
+                )
+            except OSError:
+                pass  # the work succeeded; a failed log write shouldn't discard it
         return result
 
     def _prepare_rules_file(self, engine: BaseEngine):

@@ -5,6 +5,7 @@ engine runs, watch for mtime changes while it works, and report the touched
 files so the supervisor can record them in the memory bank.
 """
 
+import os
 import threading
 from pathlib import Path
 
@@ -26,18 +27,18 @@ class ChangeCapture:
 
     def _scan(self) -> dict[str, float]:
         snap: dict[str, float] = {}
-        try:
-            for p in self.root.rglob("*"):
-                if any(part in IGNORE_DIRS for part in p.parts):
+        # os.walk lets us prune ignored dirs instead of descending into e.g.
+        # node_modules on every poll.
+        for dirpath, dirnames, filenames in os.walk(self.root):
+            dirnames[:] = [d for d in dirnames if d not in IGNORE_DIRS]
+            for name in filenames:
+                if name in IGNORE_FILES:
                     continue
-                if p.name in IGNORE_FILES or not p.is_file():
-                    continue
+                full = os.path.join(dirpath, name)
                 try:
-                    snap[str(p.relative_to(self.root))] = p.stat().st_mtime
+                    snap[os.path.relpath(full, self.root)] = os.stat(full).st_mtime
                 except OSError:
                     continue
-        except OSError:
-            pass
         return snap
 
     def _diff(self):

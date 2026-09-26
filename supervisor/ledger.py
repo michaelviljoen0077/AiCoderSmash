@@ -7,6 +7,7 @@ once their ``resets_at`` timestamp has passed.
 """
 
 import json
+import os
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -34,17 +35,23 @@ class QuotaLedger:
     def _load(self, routes: list[str]):
         if self.path.exists():
             try:
-                self._data = json.loads(self.path.read_text(encoding="utf-8"))
+                data = json.loads(self.path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
-                self._data = {}
+                data = {}
+            if isinstance(data, dict):
+                self._data = {
+                    k: v for k, v in data.items()
+                    if isinstance(v, dict) and "status" in v
+                }
         for route in routes:
             self._data.setdefault(route, {"status": ACTIVE, "resets_at": None})
         self._save()
 
     def _save(self):
-        self.path.write_text(
-            json.dumps(self._data, indent=2) + "\n", encoding="utf-8"
-        )
+        # Write-then-rename so a crash mid-write can't leave a truncated ledger.
+        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
+        tmp.write_text(json.dumps(self._data, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, self.path)
 
     def is_available(self, route: str) -> bool:
         with self._lock:

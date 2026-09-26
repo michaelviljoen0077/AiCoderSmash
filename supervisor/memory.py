@@ -19,6 +19,29 @@ TEMPLATE = """# Project Memory Bank
 """
 
 
+LOG_HEADING = "## Action Log"
+# Only the newest log entries are injected: the prompt is passed to CLI engines
+# as an argument, and Windows caps a command line at ~32K characters.
+INJECT_LOG_ENTRIES = 20
+
+
+def _trim_action_log(memory: str, keep: int) -> str:
+    head, sep, log = memory.partition(LOG_HEADING)
+    if not sep:
+        return memory
+    entries: list[list[str]] = []
+    for line in log.strip("\n").splitlines():
+        if line.startswith("- "):
+            entries.append([line])
+        elif entries:
+            entries[-1].append(line)
+    if len(entries) <= keep:
+        return memory
+    dropped = len(entries) - keep
+    kept = "\n".join(line for entry in entries[-keep:] for line in entry)
+    return f"{head}{sep}\n\n({dropped} older entries omitted)\n{kept}"
+
+
 class MemoryBank:
     def __init__(self, claude_md: Path):
         self.path = Path(claude_md)
@@ -34,7 +57,7 @@ class MemoryBank:
 
     def inject(self, prompt: str) -> str:
         """Prepend the memory bank as high-priority context to a task prompt."""
-        memory = self.read().strip()
+        memory = _trim_action_log(self.read(), INJECT_LOG_ENTRIES).strip()
         if not memory:
             return prompt
         return (

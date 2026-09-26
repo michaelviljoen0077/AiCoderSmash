@@ -1,16 +1,18 @@
 """The Delegator core (spec section 2).
 
-A small local function-calling model (qwen3-coder via Ollama) that classifies
+A small local model served by Ollama (``delegator_model`` in settings) that classifies
 each task into a capability tier and reads results back to the user. It never
 writes project code itself. If the local Ollama daemon is down, a keyword
 heuristic keeps the switchboard operational.
 """
 
+import http.client
 import json
 import re
 import urllib.error
 import urllib.request
 
+from .engines import ollama_reachable
 from .settings import Settings
 
 CLASSIFY_SYSTEM = """You are the Delegator of an AI developer-tool switchboard.
@@ -28,16 +30,19 @@ READBACK_SYSTEM = (
     "Do not add advice or new information."
 )
 
+# Word-anchored so e.g. "explanation" doesn't match "plan" and "designated"
+# doesn't match "design".
 TIER1_HINTS = re.compile(
-    r"architect|design|plan|migrat|refactor (the|entire|whole)|restructure|"
-    r"from scratch|end.to.end|overhaul|strategy",
+    r"\b(architect\w*|(re)?design(s|ing)?|plans?|planning|migrat\w*|restructur\w*|"
+    r"refactor (the|entire|whole)|from scratch|end.to.end|overhaul\w*|strategy)\b",
     re.IGNORECASE,
 )
 TIER3_HINTS = re.compile(
-    r"boilerplate|docstring|rename|typo|one.?liner|single function|autocomplete|"
-    r"stub|getter|setter|snippet|comment",
+    r"\b(boilerplate|docstrings?|renam\w*|typos?|one.?liners?|single function|"
+    r"autocomplete|stubs?|getters?|setters?|snippets?|comments?)\b",
     re.IGNORECASE,
 )
+THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 
 class Delegator:
@@ -63,40 +68,41 @@ class Delegator:
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
-            return (body.get("message") or {}).get("content", "").strip() or None
-        except (urllib.error.URLError, OSError, TimeoutError, json.JSONDecodeError):
+        except (urllib.error.URLError, OSError, TimeoutError, ValueError,
+                http.client.HTTPException):
             return None
+        if not isinstance(body, dict):
+            return None
+        content = (body.get("message") or {}).get("content") or ""
+        # Reasoning models may emit a <think> block before the answer.
+        return THINK_BLOCK.sub("", content).strip() or None
 
     def online(self) -> bool:
-        try:
-            with urllib.request.urlopen(
-                f"{self.settings.ollama_host}/api/tags", timeout=3
-            ):
-                return True
-        except (urllib.error.URLError, OSError):
-            return False
+        return ollama_reachable(self.settings.ollama_host)
 
     def classify(self, prompt: str) -> tuple[int, str]:
         """Return (tier, reason). Uses the local model, else a heuristic."""
         raw = self._chat(CLASSIFY_SYSTEM, prompt)
         if raw:
-            match = re.search(r"\{.*\}", raw, re.DOTALL)
+            match = re.search(r"\{.*?\}", raw, re.DOTALL)
             if match:
                 try:
                     parsed = json.loads(match.group(0))
                     tier = int(parsed.get("tier", 2))
                     if tier in (1, 2, 3):
                         return tier, parsed.get("reason", "classified by delegator")
-                except (json.JSONDecodeError, TypeError, ValueError):
+                except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
                     pass
         return self._heuristic(prompt)
 
     @staticmethod
     def _heuristic(prompt: str) -> tuple[int, str]:
-        if TIER3_HINTS.search(prompt) or len(prompt) < 60:
+        if TIER3_HINTS.search(prompt):
             return 3, "heuristic: small surgical task (delegator model offline)"
         if TIER1_HINTS.search(prompt):
             return 1, "heuristic: architectural keywords (delegator model offline)"
+        if len(prompt) < 60:
+            return 3, "heuristic: short task (delegator model offline)"
         return 2, "heuristic: default production tier (delegator model offline)"
 
     def read_back(self, task: str, output: str) -> str | None:

@@ -4,3 +4,5 @@ __pycache__/
 venv/
 *.log
 .env
+quota_ledger.json
+quota_ledger.json.tmp

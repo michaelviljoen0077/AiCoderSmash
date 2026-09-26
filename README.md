@@ -9,8 +9,9 @@ Spec: [SPEC-v9.1.md](SPEC-v9.1.md)
 ## Requirements
 
 - Python 3.10+ (standard library only — no pip installs needed)
-- [Ollama](https://ollama.com) running locally, with the delegator model pulled:
-  `ollama pull qwen3-coder:7b`
+- [Ollama](https://ollama.com) running locally, with the delegator model pulled
+  (`delegator_model` in `config/settings.json`, default `qwen3.5:4b`):
+  `ollama pull qwen3.5:4b`
   (the switchboard still works without it, falling back to heuristic routing)
 - Whichever worker CLIs you have, signed in with their own native auth:
   - **Claude Code** — `claude` on PATH (subscription login)
@@ -54,7 +55,7 @@ Then just type tasks at the `switchboard>` prompt. Useful commands:
 ## How it works
 
 1. **Delegator** ([supervisor/delegator.py](supervisor/delegator.py)) — a small local
-   qwen3-coder model classifies each task into tier 1/2/3 and reads results back.
+   Ollama model classifies each task into tier 1/2/3 and reads results back.
 2. **Capabilities registry** ([config/capabilities.json](config/capabilities.json)) —
    maps each tier to an ordered route list (the waterfall).
 3. **Quota ledger** ([supervisor/ledger.py](supervisor/ledger.py), state in
@@ -62,9 +63,10 @@ Then just type tasks at the `switchboard>` prompt. Useful commands:
    `exhausted`/`throttled` with an estimated reset time, then auto-reactivates.
 4. **Engines** ([supervisor/engines.py](supervisor/engines.py)) — CLI adapters run each
    tool headlessly with `cwd` locked to the project root; Ollama adapters serve the
-   cloud rung and the emergency local Qwen3-Coder 32B net.
+   cloud rung and the emergency local `qwen3-coder:30b` net.
 5. **Guardrails** ([supervisor/waterfall.py](supervisor/waterfall.py)) — one write lock,
-   a sequential task queue, shared-memory injection from `CLAUDE.md`, a polling file
+   a sequential task queue, shared-memory injection from `CLAUDE.md` (only the newest
+   20 action-log entries are injected, to keep prompts under CLI length limits), a polling file
    watcher that captures what each tool changed, and an action log appended after
    every job.
 
@@ -74,4 +76,11 @@ Then just type tasks at the `switchboard>` prompt. Useful commands:
   estimates live in [config/settings.json](config/settings.json) — adjust them if your
   CLI versions use different flags.
 - The waterfall order per tier is [config/capabilities.json](config/capabilities.json).
-- Delete `quota_ledger.json` to reset all routes to `active`.
+- Delete `quota_ledger.json` to reset all routes to `active`. It is runtime state
+  (git-ignored) and is created on first run.
+
+## Tests
+
+```powershell
+python -m unittest discover -s tests
+```

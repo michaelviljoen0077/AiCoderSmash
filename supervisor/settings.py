@@ -18,7 +18,7 @@ class Settings:
         root = project_root or self._raw.get("project_root", ".")
         self.project_root = Path(root).resolve()
         self.ollama_host = self._raw.get("ollama_host", "http://localhost:11434")
-        self.delegator_model = self._raw.get("delegator_model", "qwen3-coder:7b")
+        self.delegator_model = self._raw.get("delegator_model", "qwen3.5:4b")
         self.claude_md = self.project_root / self._raw.get("claude_md", "CLAUDE.md")
         self.watcher_interval = float(self._raw.get("watcher_interval_seconds", 1.5))
         self.engine_timeout = int(self._raw.get("engine_timeout_seconds", 900))

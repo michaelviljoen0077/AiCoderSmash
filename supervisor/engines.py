@@ -3,7 +3,7 @@
 Three adapter families:
   * CLIEngine    — subprocess-driven tools (Claude Code, Copilot, Codex, Cursor)
   * OllamaEngine — models served through the local Ollama daemon, including
-                   Ollama Cloud models (signed-in) and the emergency local 32B
+                   Ollama Cloud models (signed-in) and the emergency local model
   * ManualEngine — Antigravity: no headless API, so the supervisor prepares a
                    handoff brief and the file watcher captures the results
 
@@ -11,10 +11,13 @@ Every adapter enforces cwd = PROJECT_ROOT_DIR and raises RateLimitError when a
 route hits its quota so the waterfall can cascade.
 """
 
+import http.client
 import json
 import re
 import shutil
 import subprocess
+import threading
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -30,6 +33,32 @@ RATE_LIMIT_PATTERN = re.compile(
     r"|out of (free )?(credits|messages|requests)|allowance",
     re.IGNORECASE,
 )
+
+
+_REACHABLE_TTL = 5.0
+_reachable_cache: dict[str, tuple[float, bool]] = {}
+_reachable_lock = threading.Lock()
+
+
+def ollama_reachable(host: str) -> bool:
+    """Whether the Ollama daemon answers, cached briefly.
+
+    The dashboard polls status every few seconds and several engines share one
+    daemon, so without a cache a down daemon costs a 3s timeout per check.
+    """
+    now = time.monotonic()
+    with _reachable_lock:
+        hit = _reachable_cache.get(host)
+        if hit and now - hit[0] < _REACHABLE_TTL:
+            return hit[1]
+    try:
+        with urllib.request.urlopen(f"{host}/api/tags", timeout=3):
+            ok = True
+    except (urllib.error.URLError, OSError, http.client.HTTPException):
+        ok = False
+    with _reachable_lock:
+        _reachable_cache[host] = (time.monotonic(), ok)
+    return ok
 
 
 @dataclass
@@ -133,18 +162,14 @@ class CLIEngine(BaseEngine):
 
 class OllamaEngine(BaseEngine):
     def available(self) -> bool:
-        try:
-            with urllib.request.urlopen(
-                f"{self.settings.ollama_host}/api/tags", timeout=3
-            ):
-                return True
-        except (urllib.error.URLError, OSError):
-            return False
+        return ollama_reachable(self.settings.ollama_host)
 
     def run(self, prompt: str, tier: int) -> EngineResult:
         if not self.available():
             raise EngineUnavailable(self.route, "Ollama daemon not reachable")
-        model = self.config["model"]
+        model = self.config.get("model")
+        if not model:
+            raise EngineUnavailable(self.route, "no model configured")
         payload = json.dumps(
             {
                 "model": model,
@@ -171,10 +196,14 @@ class OllamaEngine(BaseEngine):
                     resets_at=self._reset_estimate(),
                 ) from None
             raise EngineError(self.route, f"HTTP {e.code}: {detail}") from None
-        except (urllib.error.URLError, OSError, TimeoutError) as e:
+        except (urllib.error.URLError, OSError, TimeoutError,
+                http.client.HTTPException) as e:
             raise EngineError(self.route, f"request failed: {e}") from None
+        except ValueError as e:
+            raise EngineError(self.route, f"invalid response: {e}") from None
 
-        content = (body.get("message") or {}).get("content", "").strip()
+        message = body.get("message") if isinstance(body, dict) else None
+        content = ((message or {}).get("content") or "").strip()
         if not content:
             raise EngineError(self.route, f"empty response from {model}")
         return EngineResult(self.route, content)
